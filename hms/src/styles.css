@@ -1,0 +1,19 @@
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#f1f5f9;color:#0f172a}
+button,input,select{font:inherit}input,select{padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;max-width:100%}
+button{padding:7px 12px;border:0;border-radius:6px;background:#1d4ed8;color:#fff;cursor:pointer}button:hover{background:#1e40af}
+button.sec{background:#e2e8f0;color:#0f172a}button.red{background:#dc2626}button.grn{background:#16a34a}button:disabled{opacity:.5;cursor:not-allowed}
+.login{max-width:380px;margin:8vh auto;background:#fff;padding:26px;border-radius:12px;box-shadow:0 4px 20px #0002}
+.login form,.form{display:flex;flex-direction:column;gap:10px}.form.row{flex-direction:row;flex-wrap:wrap;align-items:flex-end}
+label{display:flex;flex-direction:column;font-size:13px;gap:3px;color:#475569}
+.shell{display:flex;min-height:100vh}aside{width:210px;background:#0f172a;color:#fff;padding:16px;display:flex;flex-direction:column;gap:6px}
+aside button{background:transparent;text-align:left}aside button.on,aside button:hover{background:#1d4ed8}
+main{flex:1;padding:20px;min-width:0;overflow:auto;max-height:100vh}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.card{background:#fff;border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:0 1px 4px #0001}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.stat b{display:block;font-size:24px;color:#1d4ed8}
+.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:8px;border-bottom:1px solid #e2e8f0;vertical-align:top}th{background:#f8fafc}
+.badge{padding:2px 8px;border-radius:10px;font-size:12px;background:#e2e8f0}.badge.confirmed,.badge.paid,.badge.available,.badge.inspected,.badge.completed{background:#bbf7d0}
+.badge.pending,.badge.partial,.badge.cleaning,.badge.cleaned{background:#fef08a}.badge.checkedin,.badge.occupied{background:#bfdbfe}.badge.cancelled,.badge.unpaid,.badge.maintenance,.badge.refunded{background:#fecaca}
+.acts{display:flex;gap:4px;flex-wrap:wrap;align-items:center}.acts input{width:90px}.muted{color:#64748b}
+#toasts{position:fixed;right:14px;top:14px;display:flex;flex-direction:column;gap:6px;z-index:9}.toast{padding:10px 14px;border-radius:8px;color:#fff;background:#16a34a;box-shadow:0 2px 10px #0004}.toast.err{background:#dc2626}
+.demo{font-size:12px;margin-top:10px}.demo span{cursor:pointer;color:#1d4ed8;margin-right:8px;text-decoration:underline}
+@media(max-width:700px){.shell{flex-direction:column}aside{width:auto;flex-direction:row;flex-wrap:wrap}main{max-height:none}}
