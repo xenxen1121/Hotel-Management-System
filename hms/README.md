@@ -29,3 +29,7 @@ Check-in (room Occupied) → Services → Check-out (balance must be 0, room →
 | Custom events | `CustomEvent('hms:toast')` dispatched by `notify()`, handled by `<Toasts/>` |
 | Controlled inputs, conditional rendering, lists + keys | all pages |
 | Event-triggered business rules | overlap check, date validation, payment/check-in/out validation |
+
+## Design system (v2 redesign)
+`src/styles.css` uses CSS variables (colors, radius, shadow), supports automatic dark mode, and is responsive.
+`src/ui.jsx` holds the shared `Icon` set and `Empty` state component.

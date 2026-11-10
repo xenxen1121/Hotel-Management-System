@@ -1,12 +1,13 @@
 // PAGES: controlled forms, onChange/onSubmit/onClick/onKeyDown/onBlur, useMemo, debounce, conditional rendering, lists
 import {useState,useEffect,useMemo} from 'react';
+import {Icon,Empty} from './ui.jsx';
 import {useStore,today,addDays,nights,notify} from './store.jsx';
 const money=n=>'₱'+Number(n).toLocaleString();
 const Badge=({v})=><span className={'badge '+String(v).toLowerCase().replace(/[^a-z]/g,'')}>{v}</span>;
 const run=(err,ok)=>err?notify(err,'err'):notify(ok);
 function useDebounce(v,ms=300){const [x,setX]=useState(v);useEffect(()=>{const t=setTimeout(()=>setX(v),ms);return()=>clearTimeout(t)},[v,ms]);return x}
 function Table({head,rows}){return <div className="scroll"><table><thead><tr>{head.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>
- {rows.length?rows.map((r,i)=><tr key={i}>{r.map((c,j)=><td key={j}>{c}</td>)}</tr>):<tr><td colSpan={head.length} className="muted">No records</td></tr>}</tbody></table></div>}
+ {rows.length?rows.map((r,i)=><tr key={i}>{r.map((c,j)=><td key={j}>{c}</td>)}</tr>):<tr><td colSpan={head.length}><Empty text="No records yet"/></td></tr>}</tbody></table></div>}
 const csv=(head,rows,name)=>{const t=[head,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download=name+'.csv';a.click()};
 const gname=(s,id)=>{const g=s.guests.find(x=>x.id===id);return g?`${g.first} ${g.last}`:'?'};
@@ -16,9 +17,17 @@ export function Dashboard(){
  const reserved=new Set(s.reservations.filter(r=>r.status==='Confirmed'&&r.ci>=t).map(r=>r.roomId)).size;
  const revenue=s.payments.filter(p=>p.status==='Completed').reduce((a,p)=>a+p.amount,0);
  const pending=s.reservations.filter(r=>r.status!=='Cancelled').reduce((a,r)=>a+bill(r).balance,0);
- const c=[['Total Rooms',s.rooms.length],['Available',s.rooms.filter(r=>r.status==='Available').length],['Occupied',s.rooms.filter(r=>r.status==='Occupied').length],['Reserved',reserved],
-  ['Total Guests',s.guests.length],['Reservations',s.reservations.length],['Revenue',money(revenue)],['Pending Payments',money(pending)]];
- return <div className="grid">{c.map(([k,v])=><div key={k} className="card stat"><span className="muted">{k}</span><b>{v}</b></div>)}</div>;
+ const cnt=st=>s.rooms.filter(r=>r.status===st).length;
+ const c=[['Total Rooms',s.rooms.length,'rooms',''],['Available',cnt('Available'),'clean','ok'],['Occupied',cnt('Occupied'),'hotel','info'],['Reserved',reserved,'calendar','gold'],
+  ['Total Guests',s.guests.length,'guests',''],['Reservations',s.reservations.length,'calendar','gold'],['Revenue',money(revenue),'money','ok'],['Pending Payments',money(pending),'card','bad']];
+ const mix=[['Available','var(--ok)'],['Occupied','var(--info)'],['Cleaning','var(--warn)'],['Maintenance','var(--bad)']];
+ const arrivals=s.reservations.filter(r=>r.status==='Confirmed'&&r.ci===t),departures=s.reservations.filter(r=>r.status==='Checked-in'&&r.co<=t);
+ const num=id=>s.rooms.find(r=>r.id===id)?.number;
+ const List=({rows,empty})=>rows.length?<ul className="list">{rows.map(r=><li key={r.id}><span><b>{gname(s,r.guestId)}</b><br/><span className="muted">Room {num(r.roomId)}</span></span><Badge v={r.status}/></li>)}</ul>:<Empty icon="☕" text={empty}/>;
+ return <><div className="grid">{c.map(([k,v,ic,tone])=><div key={k} className="card stat"><span className={'ic '+tone}><Icon n={ic}/></span><div><span className="muted">{k}</span><b>{v}</b></div></div>)}</div>
+  <div className="card"><h3>Room status</h3><div className="bar" role="img" aria-label="Room status mix">{mix.map(([k,col])=><i key={k} title={k} style={{width:(s.rooms.length?cnt(k)/s.rooms.length*100:0)+'%',background:col}}/>)}</div>
+   <div className="legend">{mix.map(([k,col])=><span key={k} style={{'--c':col}}>{k} · {cnt(k)}</span>)}</div></div>
+  <div className="two"><div className="card"><h3>Arriving today</h3><List rows={arrivals} empty="No arrivals today"/></div><div className="card"><h3>Departing today</h3><List rows={departures} empty="No departures today"/></div></div></>;
 }
 
 export function Rooms(){
@@ -30,8 +39,8 @@ export function Rooms(){
   if(s.rooms.some(r=>r.number===f.number&&r.id!==edit))return notify('Room number exists','err');
   edit?upd('rooms',edit,f):add('rooms',f);notify(edit?'Room updated':'Room added');setF(blank);setEdit(null)};
  return <>
-  <div className="grid">{s.roomTypes.map(t=><div className="card" key={t.id}><h3>{t.name}</h3><p className="muted">{t.desc}</p><p>Capacity: {t.cap} guests</p>
-   {admin?<label>Price / night<input type="number" defaultValue={t.price} onBlur={e=>{upd('roomTypes',t.id,{price:+e.target.value});notify('Price updated')}}/></label>:<b>{money(t.price)} / night</b>}</div>)}</div>
+  <div className="grid">{s.roomTypes.map(t=><div className="card roomtype" key={t.id}><h3>{t.name}{!admin&&<span className="price">{money(t.price)}<small> / night</small></span>}</h3><p className="muted">{t.desc}</p><p><span className="chip">Up to {t.cap} guests</span></p>
+   {admin?<label>Price / night<input type="number" defaultValue={t.price} onBlur={e=>{upd('roomTypes',t.id,{price:+e.target.value});notify('Price updated')}}/></label>:null}</div>)}</div>
   {admin&&<form className="card form row" onSubmit={submit}><label>Room no.<input name="number" value={f.number} onChange={onChange} required/></label>
    <label>Type<select name="typeId" value={f.typeId} onChange={onChange}>{s.roomTypes.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
    <label>Status<select name="status" value={f.status} onChange={onChange}>{['Available','Cleaning','Maintenance'].map(x=><option key={x}>{x}</option>)}</select></label>
@@ -54,7 +63,7 @@ export function Guests(){
  return <><form className="card form row" onSubmit={submit}>
   {Object.keys(blank).map(k=><label key={k}>{k==='idDetails'?'ID details':k}<input name={k} value={f[k]} onChange={onChange} required={['first','last','email'].includes(k)}/></label>)}
   <button>{edit?'Save':'Register Guest'}</button>{edit&&<button type="button" className="sec" onClick={()=>{setEdit(null);setF(blank)}}>Cancel</button>}</form>
-  <div className="card"><input placeholder="Search guests…" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==='Escape'&&setQ('')}/>
+  <div className="card"><div className="toolbar"><input placeholder="Search guests…" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==='Escape'&&setQ('')}/></div>
   <Table head={['ID','Name','Email','Contact','Address','ID','Actions']} rows={list.map(g=>[g.id,`${g.first} ${g.last}`,g.email,g.contact,g.address,g.idDetails,
    <div className="acts"><button className="sec" onClick={()=>{setEdit(g.id);setF(g)}}>Edit</button>
    <button className="red" onClick={()=>s.reservations.some(r=>r.guestId===g.id)?notify('Guest has reservations','err'):del('guests',g.id)}>Delete</button></div>])}/></div></>;
@@ -85,17 +94,17 @@ export function Reservations(){
  const free=useMemo(()=>freeRooms(f.ci,f.co,f.pax),[s.reservations,s.rooms,s.roomTypes,f.ci,f.co,f.pax]);
  const submit=e=>{e.preventDefault();const err=book(f);run(err,'Reservation created (Pending). Pay a 30% deposit to confirm.');if(!err)setF(p=>({...p,roomId:''}))};
  const rows=s.reservations.filter(r=>(staff||r.guestId===user.guestId)&&(st==='All'||r.status===st)&&(`${gname(s,r.guestId)} #${r.id}`.toLowerCase().includes(q.toLowerCase()))).reverse();
- return <><form className="card form row" onSubmit={submit}><h3 style={{width:'100%',margin:0}}>New Reservation</h3>
+ return <><form className="card form row" onSubmit={submit}><h3 style={{width:'100%',margin:0}}>New reservation</h3>
   {staff&&<label>Guest<select name="guestId" value={f.guestId} onChange={onChange}><option value="">Select…</option>{s.guests.map(g=><option key={g.id} value={g.id}>{g.first} {g.last}</option>)}</select></label>}
   <label>Check-in<input type="date" name="ci" min={today()} value={f.ci} onChange={onChange}/></label>
   <label>Check-out<input type="date" name="co" min={f.ci} value={f.co} onChange={onChange}/></label>
   <label>Guests<input type="number" name="pax" min="1" max="6" value={f.pax} onChange={onChange}/></label>
   <label>Available rooms ({free.length})<select name="roomId" value={f.roomId} onChange={onChange}><option value="">Select…</option>{free.map(r=><option key={r.id} value={r.id}>{r.number} – {typeOf(r).name} {money(typeOf(r).price)}</option>)}</select></label>
   <button>Reserve</button></form>
-  <div className="card"><div className="acts" style={{marginBottom:8}}><input placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)}/>
+  <div className="card"><div className="toolbar"><input placeholder="Search guest or reservation #…" value={q} onChange={e=>setQ(e.target.value)}/>
    <select value={st} onChange={e=>setSt(e.target.value)}>{['All','Pending','Confirmed','Checked-in','Checked-out','Cancelled'].map(x=><option key={x}>{x}</option>)}</select></div>
   <div className="scroll"><table><thead><tr>{['ID','Guest','Room','Stay','Status','Amount','Payment','Actions'].map(h=><th key={h}>{h}</th>)}</tr></thead>
-   <tbody>{rows.length?rows.map(r=><Row key={r.id} r={r}/>):<tr><td colSpan="8" className="muted">No reservations</td></tr>}</tbody></table></div></div></>;
+   <tbody>{rows.length?rows.map(r=><Row key={r.id} r={r}/>):<tr><td colSpan="8"><Empty icon="📅" text="No reservations found"/></td></tr>}</tbody></table></div></div></>;
 }
 
 export function Payments(){
