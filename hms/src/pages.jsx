@@ -4,7 +4,7 @@ import {Icon,Empty} from './ui.jsx';
 import {useStore,today,addDays,nights,notify} from './store.jsx';
 const money=n=>'₱'+Number(n).toLocaleString();
 const Badge=({v})=><span className={'badge '+String(v).toLowerCase().replace(/[^a-z]/g,'')}>{v}</span>;
-const run=(err,ok)=>err?notify(err,'err'):notify(ok);
+const run=async(p,ok)=>{const err=await p;err?notify(err,'err'):notify(ok);return err}; // awaits the API call, shows a toast, returns the error (or null)
 function useDebounce(v,ms=300){const [x,setX]=useState(v);useEffect(()=>{const t=setTimeout(()=>setX(v),ms);return()=>clearTimeout(t)},[v,ms]);return x}
 function Table({head,rows}){return <div className="scroll"><table><thead><tr>{head.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>
  {rows.length?rows.map((r,i)=><tr key={i}>{r.map((c,j)=><td key={j}>{c}</td>)}</tr>):<tr><td colSpan={head.length}><Empty text="No records yet"/></td></tr>}</tbody></table></div>}
@@ -35,12 +35,12 @@ export function Rooms(){
  const blank={number:'',typeId:1,status:'Available',amenities:'WiFi, AC, TV'};
  const [f,setF]=useState(blank);const [edit,setEdit]=useState(null);
  const onChange=e=>setF({...f,[e.target.name]:e.target.name==='typeId'?+e.target.value:e.target.value});
- const submit=e=>{e.preventDefault();
+ const submit=async e=>{e.preventDefault();
   if(s.rooms.some(r=>r.number===f.number&&r.id!==edit))return notify('Room number exists','err');
-  edit?upd('rooms',edit,f):add('rooms',f);notify(edit?'Room updated':'Room added');setF(blank);setEdit(null)};
+  const err=await run(edit?upd('rooms',edit,f):add('rooms',f),edit?'Room updated':'Room added');if(!err){setF(blank);setEdit(null)}};
  return <>
   <div className="grid">{s.roomTypes.map(t=><div className="card roomtype" key={t.id}><h3>{t.name}{!admin&&<span className="price">{money(t.price)}<small> / night</small></span>}</h3><p className="muted">{t.desc}</p><p><span className="chip">Up to {t.cap} guests</span></p>
-   {admin?<label>Price / night<input type="number" defaultValue={t.price} onBlur={e=>{upd('roomTypes',t.id,{price:+e.target.value});notify('Price updated')}}/></label>:null}</div>)}</div>
+   {admin?<label>Price / night<input type="number" defaultValue={t.price} onBlur={e=>run(upd('roomTypes',t.id,{price:+e.target.value}),'Price updated')}/></label>:null}</div>)}</div>
   {admin&&<form className="card form row" onSubmit={submit}><label>Room no.<input name="number" value={f.number} onChange={onChange} required/></label>
    <label>Type<select name="typeId" value={f.typeId} onChange={onChange}>{s.roomTypes.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
    <label>Status<select name="status" value={f.status} onChange={onChange}>{['Available','Cleaning','Maintenance'].map(x=><option key={x}>{x}</option>)}</select></label>
@@ -48,7 +48,7 @@ export function Rooms(){
    <button>{edit?'Save':'Add Room'}</button>{edit&&<button type="button" className="sec" onClick={()=>{setEdit(null);setF(blank)}}>Cancel</button>}</form>}
   <div className="card"><Table head={['Room','Type','Price','Capacity','Status','Amenities',...(admin?['Actions']:[])]} rows={s.rooms.map(r=>[r.number,typeOf(r).name,money(typeOf(r).price),typeOf(r).cap,<Badge v={r.status}/>,r.amenities,
    ...(admin?[<div className="acts"><button className="sec" onClick={()=>{setEdit(r.id);setF({number:r.number,typeId:r.typeId,status:r.status==='Occupied'?'Available':r.status,amenities:r.amenities})}}>Edit</button>
-   <button className="red" onClick={()=>s.reservations.some(x=>x.roomId===r.id&&!['Cancelled','Checked-out'].includes(x.status))?notify('Room has active reservations','err'):window.confirm('Delete room?')&&del('rooms',r.id)}>Delete</button></div>]:[])])}/></div>
+   <button className="red" onClick={()=>s.reservations.some(x=>x.roomId===r.id&&!['Cancelled','Checked-out'].includes(x.status))?notify('Room has active reservations','err'):window.confirm('Delete room?')&&run(del('rooms',r.id),'Room deleted')}>Delete</button></div>]:[])])}/></div>
   {!staff&&<p className="muted">Go to “My Reservations” to book a room.</p>}</>;
 }
 
@@ -57,8 +57,8 @@ export function Guests(){
  const blank={first:'',last:'',email:'',contact:'',address:'',idDetails:''};
  const [f,setF]=useState(blank);const [edit,setEdit]=useState(null);const [q,setQ]=useState('');const dq=useDebounce(q).toLowerCase();
  const onChange=e=>setF({...f,[e.target.name]:e.target.value});
- const submit=e=>{e.preventDefault();if(!/^\S+@\S+\.\S+$/.test(f.email))return notify('Invalid email','err');
-  edit?upd('guests',edit,f):add('guests',f);notify('Guest saved');setF(blank);setEdit(null)};
+ const submit=async e=>{e.preventDefault();if(!/^\S+@\S+\.\S+$/.test(f.email))return notify('Invalid email','err');
+  const err=await run(edit?upd('guests',edit,f):add('guests',f),'Guest saved');if(!err){setF(blank);setEdit(null)}};
  const list=useMemo(()=>s.guests.filter(g=>JSON.stringify(g).toLowerCase().includes(dq)),[s.guests,dq]);
  return <><form className="card form row" onSubmit={submit}>
   {Object.keys(blank).map(k=><label key={k}>{k==='idDetails'?'ID details':k}<input name={k} value={f[k]} onChange={onChange} required={['first','last','email'].includes(k)}/></label>)}
@@ -66,7 +66,7 @@ export function Guests(){
   <div className="card"><div className="toolbar"><input placeholder="Search guests…" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==='Escape'&&setQ('')}/></div>
   <Table head={['ID','Name','Email','Contact','Address','ID','Actions']} rows={list.map(g=>[g.id,`${g.first} ${g.last}`,g.email,g.contact,g.address,g.idDetails,
    <div className="acts"><button className="sec" onClick={()=>{setEdit(g.id);setF(g)}}>Edit</button>
-   <button className="red" onClick={()=>s.reservations.some(r=>r.guestId===g.id)?notify('Guest has reservations','err'):del('guests',g.id)}>Delete</button></div>])}/></div></>;
+   <button className="red" onClick={()=>s.reservations.some(r=>r.guestId===g.id)?notify('Guest has reservations','err'):run(del('guests',g.id),'Guest deleted')}>Delete</button></div>])}/></div></>;
 }
 
 function Row({r}){
@@ -91,8 +91,8 @@ export function Reservations(){
  const [f,setF]=useState({guestId:staff?'':user.guestId,ci:today(),co:addDays(today(),1),pax:1,roomId:''});
  const [q,setQ]=useState('');const [st,setSt]=useState('All');
  const onChange=e=>{const{name,value}=e.target;setF(p=>({...p,[name]:value,...(name!=='roomId'?{roomId:''}:{})}))};
- const free=useMemo(()=>freeRooms(f.ci,f.co,f.pax),[s.reservations,s.rooms,s.roomTypes,f.ci,f.co,f.pax]);
- const submit=e=>{e.preventDefault();const err=book(f);run(err,'Reservation created (Pending). Pay a 30% deposit to confirm.');if(!err)setF(p=>({...p,roomId:''}))};
+ const free=useMemo(()=>freeRooms(f.ci,f.co,f.pax),[s.busy,s.rooms,s.roomTypes,f.ci,f.co,f.pax]);
+ const submit=async e=>{e.preventDefault();const err=await run(book(f),'Reservation created (Pending). Pay a 30% deposit to confirm.');if(!err)setF(p=>({...p,roomId:''}))};
  const rows=s.reservations.filter(r=>(staff||r.guestId===user.guestId)&&(st==='All'||r.status===st)&&(`${gname(s,r.guestId)} #${r.id}`.toLowerCase().includes(q.toLowerCase()))).reverse();
  return <><form className="card form row" onSubmit={submit}><h3 style={{width:'100%',margin:0}}>New reservation</h3>
   {staff&&<label>Guest<select name="guestId" value={f.guestId} onChange={onChange}><option value="">Select…</option>{s.guests.map(g=><option key={g.id} value={g.id}>{g.first} {g.last}</option>)}</select></label>}
@@ -114,15 +114,15 @@ export function Payments(){
 }
 
 export function Housekeeping(){
- const {s,upd,add}=useStore();
+ const {s,hk}=useStore();
  const tasks=s.housekeeping.filter(h=>h.status!=='Inspected').reverse();
  const num=id=>s.rooms.find(r=>r.id===id)?.number;
  return <><div className="card"><h3>Rooms requiring cleaning</h3><Table head={['Room','Since','Status','Actions']} rows={tasks.map(h=>[num(h.roomId),h.date,<Badge v={h.status}/>,
-  <div className="acts"><button disabled={h.status!=='Cleaning'} onClick={()=>{upd('housekeeping',h.id,{status:'Cleaned'});notify('Marked cleaned')}}>Mark Cleaned</button>
-  <button className="grn" disabled={h.status!=='Cleaned'} onClick={()=>{upd('housekeeping',h.id,{status:'Inspected'});upd('rooms',h.roomId,{status:'Available'});notify('Inspected — room Available')}}>Inspect &amp; Release</button></div>])}/></div>
+  <div className="acts"><button disabled={h.status!=='Cleaning'} onClick={()=>run(hk.clean(h.id),'Marked cleaned')}>Mark Cleaned</button>
+  <button className="grn" disabled={h.status!=='Cleaned'} onClick={()=>run(hk.release(h.id),'Inspected — room Available')}>Inspect &amp; Release</button></div>])}/></div>
   <div className="card"><h3>Room status</h3><Table head={['Room','Status','Actions']} rows={s.rooms.map(r=>[r.number,<Badge v={r.status}/>,
-   r.status==='Maintenance'?<button onClick={()=>{upd('rooms',r.id,{status:'Cleaning'});add('housekeeping',{roomId:r.id,status:'Cleaning',date:new Date().toISOString().slice(0,10)});notify('Sent back to cleaning')}}>Repair done</button>:
-   r.status==='Occupied'?<span className="muted">In use</span>:<button className="red" onClick={()=>{upd('rooms',r.id,{status:'Maintenance'});notify('Damage reported','err')}}>Report damage</button>])}/></div></>;
+   r.status==='Maintenance'?<button onClick={()=>run(hk.repaired(r.id),'Sent back to cleaning')}>Repair done</button>:
+   r.status==='Occupied'?<span className="muted">In use</span>:<button className="red" onClick={async()=>{const e=await hk.damage(r.id);e?notify(e,'err'):notify('Damage reported','err')}}>Report damage</button>])}/></div></>;
 }
 
 export function Reports(){
@@ -142,9 +142,9 @@ export function Reports(){
 
 export function Users(){
  const {s,add,del,user}=useStore();const [f,setF]=useState({username:'',password:'',role:'receptionist'});
- const submit=e=>{e.preventDefault();if(s.users.some(u=>u.username===f.username))return notify('Username taken','err');add('users',f);notify('Account created');setF({username:'',password:'',role:'receptionist'})};
+ const submit=async e=>{e.preventDefault();if(s.users.some(u=>u.username===f.username))return notify('Username taken','err');const err=await run(add('users',f),'Account created');if(!err)setF({username:'',password:'',role:'receptionist'})};
  return <><form className="card form row" onSubmit={submit}><label>Username<input value={f.username} onChange={e=>setF({...f,username:e.target.value})} required/></label>
   <label>Password<input value={f.password} onChange={e=>setF({...f,password:e.target.value})} required minLength={4}/></label>
   <label>Role<select value={f.role} onChange={e=>setF({...f,role:e.target.value})}>{['admin','receptionist','housekeeping'].map(r=><option key={r}>{r}</option>)}</select></label><button>Add Staff</button></form>
-  <div className="card"><Table head={['ID','Username','Role','Actions']} rows={s.users.map(u=>[u.id,u.username,u.role,u.id===user.id?<span className="muted">You</span>:<button className="red" onClick={()=>del('users',u.id)}>Delete</button>])}/></div></>;
+  <div className="card"><Table head={['ID','Username','Role','Actions']} rows={s.users.map(u=>[u.id,u.username,u.role,u.id===user.id?<span className="muted">You</span>:<button className="red" onClick={()=>window.confirm('Delete this account?')&&run(del('users',u.id),'Account deleted')}>Delete</button>])}/></div></>;
 }

@@ -37,9 +37,9 @@ function Login(){
  const userRef=useRef(null);
  useEffect(()=>{userRef.current?.focus()},[mode]);
  const onChange=e=>setF({...f,[e.target.name]:e.target.value});
- const submit=e=>{e.preventDefault(); // stop page reload
-  if(mode==='login'){login(f.username.trim(),f.password)?notify('Welcome!'):setErr('Invalid username or password')}
-  else{const r=register(f);if(r)setErr(r);else{notify('Account created. Please log in.');setMode('login');setErr('')}}};
+ const submit=async e=>{e.preventDefault(); // stop page reload
+  if(mode==='login'){const r=await login(f.username.trim(),f.password);r?setErr(r):notify('Welcome!')}
+  else{const r=await register(f);if(r)setErr(r);else{notify('Account created. Please log in.');setMode('login');setErr('')}}};
  const demo=(u,p)=>setF(x=>({...x,username:u,password:p}));
  return <div className="auth">
   <section className="auth-hero">
@@ -61,7 +61,7 @@ function Login(){
 }
 
 export default function App(){
- const {user,logout,reset}=useStore();
+ const {user,logout,reset,loading}=useStore();
  const [page,setPage]=useState(null);
  const [now,setNow]=useState(new Date());
  const online=useOnline();
@@ -74,6 +74,7 @@ export default function App(){
   const k=e=>{if(!user||!e.altKey)return;const n=+e.key;if(n>=1&&n<=items.length){e.preventDefault();go(items[n-1])}if(e.key.toLowerCase()==='l')logout()};
   window.addEventListener('keydown',k);return()=>window.removeEventListener('keydown',k)},[user,items,go,logout]);
  const dateStr=now.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+ if(loading)return <Toasts/>; // restoring session from the server
  return <><Toasts/>{!user?<Login/>:
   <div className="shell"><aside>
    <div className="brand"><span className="logo"><Icon n="hotel"/></span><div>HMS<small>Hotel suite</small></div></div>

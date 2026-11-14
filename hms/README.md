@@ -1,35 +1,53 @@
-# Hotel Management System (Event-Driven Programming)
-React + Vite web app. Data is persisted in browser localStorage (no backend needed).
+# Hotel Management System
+React + Vite frontend · Node.js/Express API · **MySQL** database.
 
-## Run
+## 1. Requirements
+- Node 18+ (Node 20/22 recommended)
+- MySQL 8 or MariaDB running locally. **XAMPP works**: open the XAMPP Control Panel and press *Start* on MySQL.
+
+## 2. Setup (first time only)
+1. Open `.env` and check the database login. The default is `root` with an empty password (XAMPP default).
+   If your MySQL has a password, put it in `DB_PASSWORD=`.
+2. Install packages:
 ```
 npm install
-npm run dev      # open http://localhost:5173
 ```
+
+## 3. Run
+```
+npm run dev
+```
+Open http://localhost:5173
+
+On the first start the backend automatically creates the database `hotel_db`, all tables, and the demo data.
+You do not need to import any SQL file. The data is now stored in MySQL (not in the browser).
+
+Other commands: `npm run server` (API only, port 5000) · `npm run client` (frontend only) ·
+`npm run build` then `npm start` (one server for everything at http://localhost:5000).
+
 ## Demo accounts
 admin/admin123 · reception/rec123 · guest/guest123 · house/house123
+(The admin sidebar button "Reset demo data" wipes the database back to this demo data.)
 
-## Workflow implemented
-Login → role dashboard → Guest registration → Reservation (availability + double-booking check) → Deposit/payment (30% confirms) →
-Check-in (room Occupied) → Services → Check-out (balance must be 0, room → Cleaning) → Housekeeping (clean → inspect → Available) → Dashboard & Reports (CSV export).
+## Database tables
+users, guests, room_types, rooms, services, reservations, payments, reservation_services, housekeeping
 
-## Event-driven programming concepts used
-| Concept | Where |
+## API overview (all under /api, JWT in `Authorization: Bearer ...`)
+| Endpoint | Roles |
 |---|---|
-| Components / JSX / props | every file; `Row`, `Table`, `Badge` |
-| useState | forms, filters, edit mode, toasts (pages.jsx, App.jsx) |
-| useEffect + cleanup | localStorage save, clock `setInterval`, window listeners |
-| useRef | focus username field, scroll main to top (App.jsx) |
-| useMemo / useCallback | available-room list, guest search, `go()` navigation |
-| useReducer + Context | global store (store.jsx) |
-| Custom hooks | `useOnline`, `useDebounce` |
-| React events | onClick, onChange, onSubmit, onKeyDown (Enter to pay, Esc to clear), onBlur (price edit) |
-| preventDefault | login/registration/reservation forms |
-| Native DOM events | window `keydown` (Alt+1..9, Alt+L, Esc), `online`/`offline` |
-| Custom events | `CustomEvent('hms:toast')` dispatched by `notify()`, handled by `<Toasts/>` |
-| Controlled inputs, conditional rendering, lists + keys | all pages |
-| Event-triggered business rules | overlap check, date validation, payment/check-in/out validation |
+| POST /auth/login, /auth/register | public |
+| GET /state | any logged-in user (data is filtered by role) |
+| POST /reservations | admin, receptionist, guest |
+| POST /reservations/:id/pay, /cancel | admin, receptionist, guest (own only) |
+| POST /reservations/:id/checkin, /checkout, /services | admin, receptionist |
+| POST/PUT/DELETE /rooms, PUT /roomtypes/:id | admin |
+| POST/PUT/DELETE /guests | admin, receptionist |
+| POST/DELETE /users, POST /reset | admin |
+| POST /housekeeping/:id/clean, /release · POST /rooms/:id/damage, /repaired | admin, housekeeping |
 
-## Design system (v2 redesign)
-`src/styles.css` uses CSS variables (colors, radius, shadow), supports automatic dark mode, and is responsive.
-`src/ui.jsx` holds the shared `Icon` set and `Empty` state component.
+Business rules (no double booking, date validation, 30% deposit confirms, balance must be 0 before check-out)
+are enforced on the server in `server/index.js`. Passwords are hashed with bcrypt.
+
+## Troubleshooting
+- "Cannot connect to MySQL": MySQL is not started, or `DB_USER` / `DB_PASSWORD` in `.env` is wrong.
+- "Cannot reach the server" in the browser: the API is not running. Use `npm run dev`, not only `npm run client`.
