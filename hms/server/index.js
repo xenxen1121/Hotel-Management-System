@@ -6,13 +6,14 @@ import jwt from 'jsonwebtoken';
 import path from 'path';
 import fs from 'fs';
 import {fileURLToPath} from 'url';
+import crypto from 'crypto';
 import {initDb,pool,tx,resetData} from './db.js';
 
 const SECRET=process.env.JWT_SECRET||'dev-secret-change-me';
 const PORT=+process.env.PORT||5000;
 const CLOSED=['Cancelled','No-show','Checked-out'];
 const app=express();
-app.use(express.json());
+app.use(express.json({limit:'6mb'})); // room photos arrive as base64 inside JSON
 
 class HttpError extends Error{constructor(status,msg){super(msg);this.status=status}}
 const bad=msg=>new HttpError(400,msg);
@@ -29,7 +30,7 @@ const money=n=>Math.round(Number(n)*100)/100;
 const mUser=u=>({id:u.id,username:u.username,role:u.role,guestId:u.guest_id});
 const mGuest=g=>({id:g.id,first:g.first_name,last:g.last_name,email:g.email,contact:g.contact,address:g.address,idDetails:g.id_details});
 const mType=t=>({id:t.id,name:t.name,price:t.price,cap:t.capacity,desc:t.description});
-const mRoom=r=>({id:r.id,number:r.room_number,typeId:r.type_id,status:r.status,amenities:r.amenities});
+const mRoom=r=>({id:r.id,number:r.room_number,typeId:r.type_id,status:r.status,amenities:r.amenities,image:r.image||''});
 const mRes=r=>({id:r.id,guestId:r.guest_id,roomId:r.room_id,ci:r.check_in,co:r.check_out,pax:r.pax,total:r.total,status:r.status,created:r.created_on,actualIn:r.actual_in});
 const mPay=p=>({id:p.id,resId:p.reservation_id,amount:p.amount,method:p.method,date:p.pay_date,ref:p.ref,status:p.status});
 const mSvc=x=>({id:x.id,resId:x.reservation_id,serviceId:x.service_id,qty:x.qty,subtotal:x.subtotal});
@@ -105,6 +106,26 @@ app.put('/api/roomtypes/:id',auth,roles('admin'),h(async(req,res)=>{
   res.json({ok:true});
 }));
 
+// ---------- room photos: saved as files in server/uploads/rooms, the DB stores only the URL ----------
+const HERE=path.dirname(fileURLToPath(import.meta.url));
+const UPLOADS=path.join(HERE,'uploads');
+const ROOM_DIR=path.join(UPLOADS,'rooms');
+fs.mkdirSync(ROOM_DIR,{recursive:true});
+app.use('/uploads',express.static(UPLOADS,{maxAge:'7d'}));
+const EXT={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'};
+// image: undefined = keep, null/'' = remove, "data:image/..." = new photo. Returns the URL to store (or undefined to keep).
+function saveImage(image){
+  if(image===undefined)return undefined;
+  if(image===null||image==='')return '';
+  const m=/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(image));
+  if(!m)throw bad('Photo must be a JPG, PNG or WEBP image');
+  const buf=Buffer.from(m[2],'base64');
+  if(buf.length>3*1024*1024)throw bad('Photo is too large (max 3 MB)');
+  const name=crypto.randomUUID()+'.'+EXT[m[1]];
+  fs.writeFileSync(path.join(ROOM_DIR,name),buf);
+  return '/uploads/rooms/'+name;
+}
+const dropImage=url=>{if(url&&url.startsWith('/uploads/rooms/'))fs.rm(path.join(ROOM_DIR,path.basename(url)),()=>{})};
 const ROOM_STATUS=['Available','Cleaning','Maintenance'];
 async function roomBody(c,b,id){
   const number=txt(b.number,20);if(!number)throw bad('Room number is required');
@@ -112,11 +133,13 @@ async function roomBody(c,b,id){
   if(!ROOM_STATUS.includes(b.status))throw bad('Invalid status');
   const [[d]]=await c.query('SELECT id FROM rooms WHERE room_number=? AND id<>?',[number,id||0]);
   if(d)throw bad('Room number exists');
-  return {number,typeId:t.id,status:b.status,amenities:txt(b.amenities)};
+  return {number,typeId:t.id,status:b.status,amenities:txt(b.amenities),image:b.image};
 }
 app.post('/api/rooms',auth,roles('admin'),h(async(req,res)=>{
   const r=await roomBody(pool,req.body);
-  await pool.query('INSERT INTO rooms(room_number,type_id,status,amenities) VALUES(?,?,?,?)',[r.number,r.typeId,r.status,r.amenities]);
+  const img=saveImage(r.image)||'';
+  try{await pool.query('INSERT INTO rooms(room_number,type_id,status,amenities,image) VALUES(?,?,?,?,?)',[r.number,r.typeId,r.status,r.amenities,img])}
+  catch(e){dropImage(img);throw e}
   res.status(201).json({ok:true});
 }));
 app.put('/api/rooms/:id',auth,roles('admin'),h(async(req,res)=>{
@@ -124,13 +147,19 @@ app.put('/api/rooms/:id',auth,roles('admin'),h(async(req,res)=>{
   if(!cur)throw new HttpError(404,'Room not found');
   const r=await roomBody(pool,req.body,cur.id);
   const status=cur.status==='Occupied'?'Occupied':r.status; // a guest is inside: keep Occupied
-  await pool.query('UPDATE rooms SET room_number=?,type_id=?,status=?,amenities=? WHERE id=?',[r.number,r.typeId,status,r.amenities,cur.id]);
+  const img=saveImage(r.image); // undefined = keep current photo
+  const newUrl=img===undefined?cur.image:img;
+  try{await pool.query('UPDATE rooms SET room_number=?,type_id=?,status=?,amenities=?,image=? WHERE id=?',[r.number,r.typeId,status,r.amenities,newUrl,cur.id])}
+  catch(e){dropImage(img);throw e}
+  if(newUrl!==cur.image)dropImage(cur.image);
   res.json({ok:true});
 }));
 app.delete('/api/rooms/:id',auth,roles('admin'),h(async(req,res)=>{
   const [[a]]=await pool.query('SELECT id FROM reservations WHERE room_id=? AND status NOT IN (?,?) LIMIT 1',[req.params.id,'Cancelled','Checked-out']);
   if(a)throw bad('Room has active reservations');
+  const [[old]]=await pool.query('SELECT image FROM rooms WHERE id=?',[req.params.id]);
   await pool.query('DELETE FROM rooms WHERE id=?',[req.params.id]);
+  dropImage(old?.image);
   res.json({ok:true});
 }));
 
@@ -305,12 +334,12 @@ app.post('/api/rooms/:id/repaired',auth,roles(...HK),h(async(req,res)=>{
 }));
 
 // ---------- demo reset (admin) ----------
-app.post('/api/reset',auth,roles('admin'),h(async(req,res)=>{await resetData();res.json({ok:true})}));
+app.post('/api/reset',auth,roles('admin'),h(async(req,res)=>{await resetData();for(const f of fs.readdirSync(ROOM_DIR))fs.rmSync(path.join(ROOM_DIR,f),{force:true});res.json({ok:true})}));
 
 app.use('/api',(req,res)=>res.status(404).json({error:'Not found'}));
 
 // Serve the built frontend if `npm run build` was run (production style: one server for everything)
-const dist=path.join(path.dirname(fileURLToPath(import.meta.url)),'..','dist');
+const dist=path.join(HERE,'..','dist');
 if(fs.existsSync(dist)){app.use(express.static(dist));app.get('*',(req,res)=>res.sendFile(path.join(dist,'index.html')))}
 
 app.use((e,req,res,next)=>{

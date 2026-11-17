@@ -2,7 +2,7 @@
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 
-const {DB_HOST='localhost',DB_PORT='3306',DB_USER='root',DB_PASSWORD='',DB_NAME='hotel_db'}=process.env;
+const {DB_HOST='localhost',DB_PORT='3306',DB_USER='root',DB_PASSWORD='',DB_NAME='hotel_system'}=process.env;
 const conn={host:DB_HOST,port:+DB_PORT,user:DB_USER,password:DB_PASSWORD};
 
 export let pool;
@@ -33,6 +33,7 @@ const SCHEMA=[
   type_id INT NOT NULL,
   status ENUM('Available','Occupied','Cleaning','Maintenance') NOT NULL DEFAULT 'Available',
   amenities VARCHAR(255) NOT NULL DEFAULT '',
+  image VARCHAR(255) NOT NULL DEFAULT '',
   FOREIGN KEY(type_id) REFERENCES room_types(id)
 ) ENGINE=InnoDB`,
 `CREATE TABLE IF NOT EXISTS services(
@@ -112,6 +113,20 @@ export async function initDb(){
   pool=mysql.createPool({...conn,database:DB_NAME,waitForConnections:true,connectionLimit:10,
     dateStrings:true,decimalNumbers:true,charset:'utf8mb4'});
   for(const q of SCHEMA)await pool.query(q);
+  // Upgrade: databases created by the previous version have no rooms.image column yet
+  const [[hasImg]]=await pool.query("SELECT COUNT(*) n FROM information_schema.columns WHERE table_schema=? AND table_name='rooms' AND column_name='image'",[DB_NAME]);
+  if(!hasImg.n){await pool.query("ALTER TABLE rooms ADD COLUMN image VARCHAR(255) NOT NULL DEFAULT ''");console.log('[db] Added rooms.image column')}
+  // If an older/different database with the same name exists, its tables are not ours: stop with a clear message
+  const NEED={users:['password_hash','guest_id','role'],guests:['first_name','id_details'],rooms:['room_number','type_id'],room_types:['capacity'],
+    reservations:['check_in','check_out','created_on'],payments:['reservation_id','pay_date'],reservation_services:['subtotal'],housekeeping:['task_date']};
+  const [cols]=await pool.query('SELECT table_name t,column_name c FROM information_schema.columns WHERE table_schema=?',[DB_NAME]);
+  const have=new Set(cols.map(x=>`${x.t.toLowerCase()}.${x.c.toLowerCase()}`));
+  const missing=Object.entries(NEED).flatMap(([t,cs])=>cs.filter(c=>!have.has(`${t}.${c}`)).map(c=>`${t}.${c}`));
+  if(missing.length){
+    console.error(`\n[db] The database "${DB_NAME}" already exists but has a different structure (missing: ${missing.join(', ')}).`);
+    console.error('[db] Fix: change DB_NAME in the .env file to a new name (e.g. hotel_system), or drop the old database, then restart.\n');
+    process.exit(1);
+  }
   const [[{n}]]=await pool.query('SELECT COUNT(*) n FROM users');
   if(n===0){const c=await pool.getConnection();try{await seed(c);console.log('[db] Empty database -> demo data inserted')}finally{c.release()}}
   console.log(`[db] Connected to MySQL database "${DB_NAME}"`);

@@ -4,6 +4,14 @@ import {Icon,Empty} from './ui.jsx';
 import {useStore,today,addDays,nights,notify} from './store.jsx';
 const money=n=>'₱'+Number(n).toLocaleString();
 const Badge=({v})=><span className={'badge '+String(v).toLowerCase().replace(/[^a-z]/g,'')}>{v}</span>;
+// Reads a chosen image file and shrinks it (max 1000px wide, JPEG) so uploads stay small and fast
+const readPhoto=file=>new Promise((ok,fail)=>{
+ if(!/^image\//.test(file.type))return fail(new Error('Please choose an image file'));
+ const url=URL.createObjectURL(file),img=new Image();
+ img.onload=()=>{const k=Math.min(1,1000/img.width),c=document.createElement('canvas');c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+  const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);ok(c.toDataURL('image/jpeg',0.82))};
+ img.onerror=()=>{URL.revokeObjectURL(url);fail(new Error('Could not read that image'))};img.src=url});
+const Photo=({src,cls='thumb'})=>src?<img className={cls} src={src} alt="Room" loading="lazy"/>:<div className={cls+' nophoto'}>No photo</div>;
 const run=async(p,ok)=>{const err=await p;err?notify(err,'err'):notify(ok);return err}; // awaits the API call, shows a toast, returns the error (or null)
 function useDebounce(v,ms=300){const [x,setX]=useState(v);useEffect(()=>{const t=setTimeout(()=>setX(v),ms);return()=>clearTimeout(t)},[v,ms]);return x}
 function Table({head,rows}){return <div className="scroll"><table><thead><tr>{head.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>
@@ -34,10 +42,16 @@ export function Rooms(){
  const {s,user,add,upd,del,typeOf}=useStore();const admin=user.role==='admin';const staff=user.role!=='guest';
  const blank={number:'',typeId:1,status:'Available',amenities:'WiFi, AC, TV'};
  const [f,setF]=useState(blank);const [edit,setEdit]=useState(null);
+ const [img,setImg]=useState(undefined);const [fileKey,setFileKey]=useState(0); // img: undefined = unchanged, null = remove, string = new photo
+ const [preview,setPreview]=useState('');
+ const pick=async e=>{const file=e.target.files[0];if(!file)return;try{const d=await readPhoto(file);setImg(d);setPreview(d)}catch(x){notify(x.message,'err');setFileKey(k=>k+1)}};
+ const clearPhoto=()=>{setImg(edit?null:undefined);setPreview('');setFileKey(k=>k+1)};
+ const resetForm=()=>{setF(blank);setEdit(null);setImg(undefined);setPreview('');setFileKey(k=>k+1)};
  const onChange=e=>setF({...f,[e.target.name]:e.target.name==='typeId'?+e.target.value:e.target.value});
  const submit=async e=>{e.preventDefault();
   if(s.rooms.some(r=>r.number===f.number&&r.id!==edit))return notify('Room number exists','err');
-  const err=await run(edit?upd('rooms',edit,f):add('rooms',f),edit?'Room updated':'Room added');if(!err){setF(blank);setEdit(null)}};
+  const body={...f,...(img!==undefined?{image:img}:{})};
+  const err=await run(edit?upd('rooms',edit,body):add('rooms',body),edit?'Room updated':'Room added');if(!err)resetForm()};
  return <>
   <div className="grid">{s.roomTypes.map(t=><div className="card roomtype" key={t.id}><h3>{t.name}{!admin&&<span className="price">{money(t.price)}<small> / night</small></span>}</h3><p className="muted">{t.desc}</p><p><span className="chip">Up to {t.cap} guests</span></p>
    {admin?<label>Price / night<input type="number" defaultValue={t.price} onBlur={e=>run(upd('roomTypes',t.id,{price:+e.target.value}),'Price updated')}/></label>:null}</div>)}</div>
@@ -45,9 +59,12 @@ export function Rooms(){
    <label>Type<select name="typeId" value={f.typeId} onChange={onChange}>{s.roomTypes.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
    <label>Status<select name="status" value={f.status} onChange={onChange}>{['Available','Cleaning','Maintenance'].map(x=><option key={x}>{x}</option>)}</select></label>
    <label>Amenities<input name="amenities" value={f.amenities} onChange={onChange}/></label>
-   <button>{edit?'Save':'Add Room'}</button>{edit&&<button type="button" className="sec" onClick={()=>{setEdit(null);setF(blank)}}>Cancel</button>}</form>}
-  <div className="card"><Table head={['Room','Type','Price','Capacity','Status','Amenities',...(admin?['Actions']:[])]} rows={s.rooms.map(r=>[r.number,typeOf(r).name,money(typeOf(r).price),typeOf(r).cap,<Badge v={r.status}/>,r.amenities,
-   ...(admin?[<div className="acts"><button className="sec" onClick={()=>{setEdit(r.id);setF({number:r.number,typeId:r.typeId,status:r.status==='Occupied'?'Available':r.status,amenities:r.amenities})}}>Edit</button>
+   <label className="photo-field">Room photo<input key={fileKey} type="file" accept="image/*" onChange={pick}/></label>
+   {preview&&<div className="photo-preview"><Photo src={preview} cls="preview"/><button type="button" className="sec" onClick={clearPhoto}>Remove photo</button></div>}
+   <button>{edit?'Save':'Add Room'}</button>{edit&&<button type="button" className="sec" onClick={resetForm}>Cancel</button>}</form>}
+  {!staff&&<div className="gallery">{s.rooms.map(r=><div className="card room-card" key={r.id}><Photo src={r.image} cls="room-photo"/><div className="room-info"><h3>Room {r.number} <Badge v={r.status}/></h3><p className="muted">{typeOf(r).name} · up to {typeOf(r).cap} guests</p><p><span className="price">{money(typeOf(r).price)}<small> / night</small></span></p><p className="muted">{r.amenities}</p></div></div>)}</div>}
+  <div className="card"><Table head={['Photo','Room','Type','Price','Capacity','Status','Amenities',...(admin?['Actions']:[])]} rows={s.rooms.map(r=>[<Photo src={r.image}/>,r.number,typeOf(r).name,money(typeOf(r).price),typeOf(r).cap,<Badge v={r.status}/>,r.amenities,
+   ...(admin?[<div className="acts"><button className="sec" onClick={()=>{setEdit(r.id);setF({number:r.number,typeId:r.typeId,status:r.status==='Occupied'?'Available':r.status,amenities:r.amenities});setImg(undefined);setPreview(r.image||'');setFileKey(k=>k+1);window.scrollTo({top:0,behavior:'smooth'})}}>Edit</button>
    <button className="red" onClick={()=>s.reservations.some(x=>x.roomId===r.id&&!['Cancelled','Checked-out'].includes(x.status))?notify('Room has active reservations','err'):window.confirm('Delete room?')&&run(del('rooms',r.id),'Room deleted')}>Delete</button></div>]:[])])}/></div>
   {!staff&&<p className="muted">Go to “My Reservations” to book a room.</p>}</>;
 }

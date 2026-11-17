@@ -19,7 +19,7 @@ npm run dev
 ```
 Open http://localhost:5173
 
-On the first start the backend automatically creates the database `hotel_db`, all tables, and the demo data.
+On the first start the backend automatically creates the database `hotel_system`, all tables, and the demo data.
 You do not need to import any SQL file. The data is now stored in MySQL (not in the browser).
 
 Other commands: `npm run server` (API only, port 5000) · `npm run client` (frontend only) ·

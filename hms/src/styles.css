@@ -131,3 +131,15 @@ tbody tr{transition:background .12s}tbody tr:hover{background:var(--surface-2)}t
   aside button{width:auto;white-space:nowrap;padding:8px 12px}aside button.on{box-shadow:inset 0 -3px 0 var(--accent)}
   main{max-height:none;padding:18px 14px}.top h2{font-size:24px}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ===== ROOM PHOTOS ===== */
+.thumb{width:72px;height:50px;object-fit:cover;border-radius:8px;display:block;border:1px solid var(--line)}
+.nophoto{display:flex;align-items:center;justify-content:center;background:var(--surface-2);color:var(--muted);font-size:11px;text-align:center}
+.photo-field{flex:2 1 240px}.photo-field input{padding:7px}
+.photo-preview{display:flex;align-items:center;gap:12px;flex:1 1 100%}
+.preview{width:160px;height:110px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;margin-bottom:18px}
+.room-card{padding:0;overflow:hidden;margin-bottom:0}
+.room-photo{width:100%;height:170px;object-fit:cover;display:block}
+.room-photo.nophoto{font-size:13px}
+.room-info{padding:14px 16px}.room-info h3{display:flex;justify-content:space-between;align-items:center;gap:8px}.room-info p{margin:4px 0}
